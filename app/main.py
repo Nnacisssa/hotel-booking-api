@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.database import Base, engine
 import app.models
-from app.routers import auth, hotels 
+from app.routers import auth, bookings, hotels 
 
 
 @asynccontextmanager
@@ -21,6 +21,7 @@ app = FastAPI(
 
 app.include_router(auth.router)
 app.include_router(hotels.router)
+app.include_router(bookings.router)
 
 
 @app.get("/")

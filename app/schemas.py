@@ -1,6 +1,9 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
 from app.models import UserRole
+from datetime import date
+from app.models import BookingStatus
+
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -53,6 +56,25 @@ class HotelCreate(HotelBase):
 class HotelResponse(HotelBase):
     id: int
     rooms: list[RoomResponse] = []
+
+    class Config:
+        from_attributes = True
+
+
+class BookingCreate(BaseModel):
+    room_id: int
+    check_in: date
+    check_out: date
+
+
+class BookingResponse(BaseModel):
+    id: int
+    user_id: int
+    room_id: int
+    check_in: date
+    check_out: date
+    status: BookingStatus
+    created_at: datetime
 
     class Config:
         from_attributes = True
