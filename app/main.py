@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.database import Base, engine
-import app.models 
+import app.models
+from app.routers import auth, hotels 
 
 
 @asynccontextmanager
@@ -18,6 +19,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.include_router(auth.router)
+app.include_router(hotels.router)
+
 
 @app.get("/")
 async def root():
@@ -26,7 +30,4 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "ok",
-        "service": "booking-api"
-    }
+    return {"status": "ok", "service": "booking-api"}
