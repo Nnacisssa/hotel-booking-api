@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -6,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.dependencies import get_current_admin
 from app.models import Hotel, Room, User
+from app.redis import redis_client
 from app.schemas import HotelCreate, HotelResponse, RoomCreate, RoomResponse
 
 router = APIRouter(prefix="/hotels", tags=["Hotels & Rooms (Отели и Номера)"])
@@ -16,13 +18,25 @@ async def get_hotels(
     city: str | None = Query(None, description="Фильтр по городу"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Получение списка всех отелей (с опциональной фильтрацией по городу)."""
+    """Получение списка отелей с кэшированием в Redis на 60 секунд."""
+    cache_key = f"hotels:city:{city or 'all'}"
+
+    cached_hotels = await redis_client.get(cache_key)
+    if cached_hotels:
+        return json.loads(cached_hotels)
+
     query = select(Hotel).options(selectinload(Hotel.rooms))
     if city:
         query = query.where(Hotel.city.ilike(f"%{city}%"))
 
     result = await db.execute(query)
-    return result.scalars().all()
+    hotels = result.scalars().all()
+
+    hotels_data = [HotelResponse.model_validate(h).model_dump(mode="json") for h in hotels]
+
+    await redis_client.set(cache_key, json.dumps(hotels_data), ex=60)
+
+    return hotels_data
 
 
 @router.get("/{hotel_id}", response_model=HotelResponse)
@@ -46,11 +60,14 @@ async def create_hotel(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(get_current_admin)
 ):
-    """Создание нового отеля (Доступно только для ADMIN)."""
+    """Создание нового отеля (Доступно только для ADMIN) + Инвалидация кэша."""
     new_hotel = Hotel(**hotel_data.model_dump())
     db.add(new_hotel)
     await db.commit()
     await db.refresh(new_hotel)
+
+    await redis_client.flushdb()
+
     return new_hotel
 
 
@@ -71,4 +88,7 @@ async def create_room(
     db.add(new_room)
     await db.commit()
     await db.refresh(new_room)
+
+    await redis_client.flushdb()
+
     return new_room

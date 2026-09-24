@@ -1,7 +1,8 @@
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Booking, BookingStatus, Room, User
@@ -10,14 +11,19 @@ from app.schemas import BookingCreate, BookingResponse
 router = APIRouter(prefix="/bookings", tags=["Bookings (Бронирования)"])
 
 
+def send_booking_confirmation_email(user_email: str, booking_id: int):
+    """Фоновая задача: симуляция отправки e-mail пользователю."""
+    print(f"[EMAIL SERVICE] 📧 Подтверждение бронирования #{booking_id} успешно отправлено на {user_email}")
+
+
 @router.post("", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
 async def create_booking(
     booking_data: BookingCreate,
+    background_tasks: BackgroundTasks, 
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Бронирование номера на указанные даты (Требуется авторизация)."""
-    
+    """Бронирование номера на указанные даты."""
     if booking_data.check_in >= booking_data.check_out:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -60,6 +66,12 @@ async def create_booking(
     await db.commit()
     await db.refresh(new_booking)
 
+    background_tasks.add_task(
+        send_booking_confirmation_email,
+        user_email=current_user.email,
+        booking_id=new_booking.id
+    )
+
     return new_booking
 
 
@@ -68,7 +80,6 @@ async def get_my_bookings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Получение списка всех бронирований авторизованного пользователя."""
     query = select(Booking).where(Booking.user_id == current_user.id)
     result = await db.execute(query)
     return result.scalars().all()
@@ -80,7 +91,6 @@ async def cancel_booking(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Отмена бронирования (Пользователь может отменить только своё бронирование)."""
     query = select(Booking).where(
         Booking.id == booking_id,
         Booking.user_id == current_user.id
