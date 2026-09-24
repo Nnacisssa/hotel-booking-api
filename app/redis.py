@@ -1,7 +1,8 @@
 import redis.asyncio as aioredis
+from app.config import settings
 
 redis_client = aioredis.from_url(
-    "redis://localhost:6379",
+    settings.REDIS_URL,
     encoding="utf-8",
     decode_responses=True
 )

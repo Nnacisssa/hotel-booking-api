@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
 from app.database import Base, engine
 import app.models
-from app.routers import auth, bookings, hotels 
+from app.routers import auth, bookings, hotels
 
 
 @asynccontextmanager
@@ -19,14 +22,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+
 app.include_router(auth.router)
 app.include_router(hotels.router)
 app.include_router(bookings.router)
 
 
-@app.get("/")
-async def root():
-    return {"message": "Сервис бронирования успешно запущен!"}
+
+@app.get("/", include_in_schema=False)
+async def read_index():
+    return FileResponse("app/static/index.html")
 
 
 @app.get("/health")

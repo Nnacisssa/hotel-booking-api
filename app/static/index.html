@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel Booking App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <style>
+        body { padding: 20px; max-width: 900px; margin: 0 auto; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card { border: 1px solid #333; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .status-ok { color: #4caf50; font-weight: bold; }
+        .status-err { color: #f44336; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Сервис Бронирования Отелей</h1>
+        <p id="auth-status">Статус: <span style="color: gray;">Не авторизован</span></p>
+    </header>
+
+    <main class="grid-2">
+        <!-- Блок авторизации -->
+        <section class="card">
+            <h3>Авторизация / Регистрация</h3>
+            <input type="email" id="email" placeholder="Email (например, test@mail.ru)">
+            <input type="password" id="password" placeholder="Пароль">
+            <div style="display: flex; gap: 10px;">
+                <button onclick="register()">Регистрация</button>
+                <button onclick="login()" class="secondary">Войти</button>
+            </div>
+            <p id="auth-result"></p>
+        </section>
+
+        <!-- Блок создания отеля -->
+        <section class="card">
+            <h3>Добавить Отель</h3>
+            <input type="text" id="hotel-title" placeholder="Название (например, Hilton)">
+            <input type="text" id="hotel-city" placeholder="Город (например, Минск)">
+            <input type="text" id="hotel-address" placeholder="Адрес">
+            <button onclick="createHotel()">Создать отель</button>
+            <p id="hotel-result"></p>
+        </section>
+    </main>
+
+    <hr>
+
+    <!-- Список отелей и бронирование -->
+    <section>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Доступные Отели</h2>
+            <button onclick="loadHotels()" class="contrast" style="width: auto;">🔄 Обновить список</button>
+        </div>
+        <div id="hotels-list">Нажмите «Обновить список», чтобы загрузить отели из базы...</div>
+    </section>
+
+    <script>
+        let token = localStorage.getItem('jwt_token') || '';
+
+        function updateAuthUI() {
+            const statusEl = document.getElementById('auth-status');
+            if (token) {
+                statusEl.innerHTML = 'Статус: <span class="status-ok"> Вы вошли в систему</span>';
+            } else {
+                statusEl.innerHTML = 'Статус: <span class="status-err"> Не авторизован</span>';
+            }
+        }
+        updateAuthUI();
+
+       // 1. Регистрация
+        async function register() {
+            const emailValue = document.getElementById('email').value.trim().toLowerCase();
+            const res = await fetch('/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: emailValue,
+                    password: document.getElementById('password').value
+                })
+            });
+            const data = await res.json();
+            document.getElementById('auth-result').innerText = res.ok ? '✅ Успешно зарегистрирован!' : '❌ ' + JSON.stringify(data.detail);
+        }
+
+        // 2. Вход
+        async function login() {
+            const emailValue = document.getElementById('email').value.trim().toLowerCase();
+            const res = await fetch('/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: emailValue,
+                    password: document.getElementById('password').value
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                token = data.access_token;
+                localStorage.setItem('jwt_token', token);
+                document.getElementById('auth-result').innerText = '✅ Авторизован!';
+                updateAuthUI();
+            } else {
+                document.getElementById('auth-result').innerText = '❌ ' + JSON.stringify(data.detail);
+            }
+        }
+
+        // 3. Создание отеля
+        async function createHotel() {
+            const res = await fetch('/hotels', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    title: document.getElementById('hotel-title').value,
+                    city: document.getElementById('hotel-city').value,
+                    address: document.getElementById('hotel-address').value
+                })
+            });
+            const data = await res.json();
+            document.getElementById('hotel-result').innerText = res.ok ? ' Отель создан!' : ' ' + JSON.stringify(data.detail);
+            if (res.ok) loadHotels();
+        }
+
+        // 4. Загрузка списка отелей
+        async function loadHotels() {
+            const res = await fetch('/hotels');
+            const hotels = await res.json();
+            const container = document.getElementById('hotels-list');
+            container.innerHTML = '';
+
+            if (hotels.length === 0) {
+                container.innerHTML = '<p>Отелей пока нет. Создайте первый!</p>';
+                return;
+            }
+
+            hotels.forEach(h => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <h3>${h.title} (${h.city})</h3>
+                    <p> Адрес: ${h.address}</p>
+                    <button onclick="addRoom(${h.id})" class="secondary"> Добавить номер 101</button>
+                    <div style="margin-top: 10px;">
+                        <strong>Номера:</strong>
+                        ${h.rooms.length ? h.rooms.map(r => `
+                            <div style="background: #222; padding: 10px; margin: 5px 0; border-radius: 4px;">
+                                 Номер: ${r.room_number} \vert{}  Цена: ${r.price_per_night} руб./ночь 
+                                <button onclick="bookRoom(${r.id})" style="margin-top:5px;">Забронировать (1-5 Октября)</button>
+                            </div>
+                        `).join('') : '<em>Нет доступных номеров</em>'}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 5. Добавление номера в отель
+        async function addRoom(hotelId) {
+            const res = await fetch(`/hotels/${hotelId}/rooms`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    room_number: "Room-" + Math.floor(Math.random() * 899 + 100),
+                    price_per_night: 4500,
+                    capacity: 2
+                })
+            });
+            if (res.ok) loadHotels();
+            else alert('Ошибка при создании номера: ' + JSON.stringify(await res.json()));
+        }
+
+        // 6. Бронирование номера
+        async function bookRoom(roomId) {
+            const res = await fetch('/bookings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    room_id: roomId,
+                    check_in: "2026-10-01",
+                    check_out: "2026-10-05"
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(' Успешно забронировано! Чек отправлен на почту.');
+            } else {
+                alert(' Ошибка бронирования: ' + (data.detail || 'Ошибка'));
+            }
+        }
+    </script>
+</body>
+</html>

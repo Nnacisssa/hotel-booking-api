@@ -1,9 +1,4 @@
-# Python
-__pycache__/
-*.py[cod]
 .venv/
-env/
+__pycache__/
 .env
-
-*.log
-.DS_Store
+*.sqlite3
